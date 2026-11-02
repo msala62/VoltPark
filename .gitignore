@@ -1,0 +1,14 @@
+# File compilati Java e cartella di build Maven
+target/
+*.class
+*.jar
+*.war
+
+# File temporanei di sistema e impostazioni locali opzionali
+.DS_Store
+Thumbs.db
+.settings/
+
+# GARANZIA: Assicuriamoci che i file di progetto Eclipse NON vengano ignorati
+!.project
+!.classpath
