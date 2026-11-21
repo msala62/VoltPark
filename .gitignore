@@ -9,6 +9,13 @@ target/
 Thumbs.db
 .settings/
 
+# File generati durante l'esecuzione: log di Log4j2 e database H2 embedded
+logs/
+*.log
+*.mv.db
+*.trace.db
+*.lock.db
+
 # GARANZIA: Assicuriamoci che i file di progetto Eclipse NON vengano ignorati
 !.project
 !.classpath
