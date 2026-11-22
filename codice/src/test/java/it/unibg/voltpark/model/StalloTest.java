@@ -54,6 +54,16 @@ class StalloTest {
         stallo = new StalloDiProva("STD-01");
     }
 
+    /** Porta lo stallo nello stato desiderato solo tramite transizioni di dominio valide. */
+    private void portaInStato(StatoStallo target) {
+        switch (target) {
+            case LIBERO -> { /* stato iniziale */ }
+            case PRENOTATO -> stallo.prenota(TARGA, T0, VALIDITA_PRENOTAZIONE_MIN);
+            case OCCUPATO -> stallo.occupa(TARGA);
+            case FUORI_SERVIZIO -> stallo.mettiFuoriServizio();
+        }
+    }
+
     @Nested
     @DisplayName("costruzione")
     class Costruzione {
@@ -98,11 +108,38 @@ class StalloTest {
         @ParameterizedTest(name = "rifiutata se lo stallo e' {0}")
         @EnumSource(value = StatoStallo.class, names = "LIBERO", mode = EnumSource.Mode.EXCLUDE)
         void prenotaStalloNonLibero(StatoStallo stato) {
-            stallo.setStato(stato);
+            portaInStato(stato);
 
             assertThrows(IllegalStateException.class,
                     () -> stallo.prenota(TARGA, T0, VALIDITA_PRENOTAZIONE_MIN));
             assertEquals(stato, stallo.getStato());
+        }
+
+        @ParameterizedTest(name = "targa [{0}] rifiutata")
+        @NullAndEmptySource
+        @ValueSource(strings = { " ", "\t" })
+        void prenotaConTargaNonValida(String targaNonValida) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> stallo.prenota(targaNonValida, T0, VALIDITA_PRENOTAZIONE_MIN));
+            assertAll(
+                    () -> assertEquals(StatoStallo.LIBERO, stallo.getStato()),
+                    () -> assertTrue(stallo.getPrenotazioneAttiva().isEmpty()));
+        }
+
+        @Test
+        @DisplayName("rifiutata se l'istante di prenotazione e' null")
+        void prenotaConIstanteNullo() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> stallo.prenota(TARGA, null, VALIDITA_PRENOTAZIONE_MIN));
+            assertEquals(StatoStallo.LIBERO, stallo.getStato());
+        }
+
+        @ParameterizedTest(name = "validita' di {0} minuti rifiutata")
+        @ValueSource(ints = { 0, -10 })
+        void prenotaConValiditaNonPositiva(int minutiValidita) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> stallo.prenota(TARGA, T0, minutiValidita));
+            assertEquals(StatoStallo.LIBERO, stallo.getStato());
         }
 
         @Test
@@ -193,10 +230,33 @@ class StalloTest {
         @ParameterizedTest(name = "rifiutata se lo stallo e' {0}")
         @EnumSource(value = StatoStallo.class, names = { "OCCUPATO", "FUORI_SERVIZIO" })
         void occupaStalloNonDisponibile(StatoStallo stato) {
-            stallo.setStato(stato);
+            portaInStato(stato);
 
             assertThrows(IllegalStateException.class, () -> stallo.occupa(TARGA));
             assertEquals(stato, stallo.getStato());
+        }
+
+        @ParameterizedTest(name = "targa [{0}] rifiutata su stallo LIBERO")
+        @NullAndEmptySource
+        @ValueSource(strings = { " ", "\t" })
+        void occupaConTargaNonValidaDaLibero(String targaNonValida) {
+            assertThrows(IllegalArgumentException.class, () -> stallo.occupa(targaNonValida));
+            assertAll(
+                    () -> assertEquals(StatoStallo.LIBERO, stallo.getStato()),
+                    () -> assertTrue(stallo.getTargaOccupante().isEmpty()));
+        }
+
+        @ParameterizedTest(name = "targa [{0}] rifiutata su stallo PRENOTATO")
+        @NullAndEmptySource
+        @ValueSource(strings = { " ", "\t" })
+        void occupaConTargaNonValidaDaPrenotato(String targaNonValida) {
+            stallo.prenota(TARGA, T0, VALIDITA_PRENOTAZIONE_MIN);
+
+            assertThrows(IllegalArgumentException.class, () -> stallo.occupa(targaNonValida));
+            assertAll(
+                    () -> assertEquals(StatoStallo.PRENOTATO, stallo.getStato()),
+                    () -> assertTrue(stallo.getTargaOccupante().isEmpty()),
+                    () -> assertTrue(stallo.getPrenotazioneAttiva().isPresent()));
         }
     }
 
@@ -254,6 +314,15 @@ class StalloTest {
         }
 
         @Test
+        @DisplayName("libera() rifiutata se lo stallo e' FUORI_SERVIZIO")
+        void liberaStalloFuoriServizio() {
+            stallo.mettiFuoriServizio();
+
+            assertThrows(IllegalStateException.class, () -> stallo.libera());
+            assertEquals(StatoStallo.FUORI_SERVIZIO, stallo.getStato());
+        }
+
+        @Test
         @DisplayName("dopo il rilascio lo stallo puo' essere rioccupato da un'altra targa")
         void rioccupazioneDopoRilascio() {
             stallo.occupa(TARGA);
@@ -263,6 +332,72 @@ class StalloTest {
 
             assertSame(StatoStallo.OCCUPATO, stallo.getStato());
             assertEquals(ALTRA_TARGA, stallo.getTargaOccupante().orElseThrow());
+        }
+    }
+
+    @Nested
+    @DisplayName("manutenzione")
+    class Manutenzione {
+
+        @Test
+        @DisplayName("mettiFuoriServizio() porta uno stallo LIBERO in FUORI_SERVIZIO")
+        void mettiFuoriServizioDaLibero() {
+            stallo.mettiFuoriServizio();
+
+            assertEquals(StatoStallo.FUORI_SERVIZIO, stallo.getStato());
+        }
+
+        @Test
+        @DisplayName("mettiFuoriServizio() annulla l'eventuale prenotazione attiva")
+        void mettiFuoriServizioDaPrenotato() {
+            stallo.prenota(TARGA, T0, VALIDITA_PRENOTAZIONE_MIN);
+
+            stallo.mettiFuoriServizio();
+
+            assertAll(
+                    () -> assertEquals(StatoStallo.FUORI_SERVIZIO, stallo.getStato()),
+                    () -> assertTrue(stallo.getPrenotazioneAttiva().isEmpty()));
+        }
+
+        @Test
+        @DisplayName("mettiFuoriServizio() su stallo gia' FUORI_SERVIZIO e' idempotente")
+        void mettiFuoriServizioIdempotente() {
+            stallo.mettiFuoriServizio();
+            stallo.mettiFuoriServizio();
+
+            assertEquals(StatoStallo.FUORI_SERVIZIO, stallo.getStato());
+        }
+
+        @Test
+        @DisplayName("mettiFuoriServizio() rifiutata se lo stallo e' OCCUPATO")
+        void mettiFuoriServizioDaOccupatoRifiutato() {
+            stallo.occupa(TARGA);
+
+            assertThrows(IllegalStateException.class, () -> stallo.mettiFuoriServizio());
+            assertAll(
+                    () -> assertEquals(StatoStallo.OCCUPATO, stallo.getStato()),
+                    () -> assertEquals(TARGA, stallo.getTargaOccupante().orElseThrow()));
+        }
+
+        @Test
+        @DisplayName("rimettiInServizio() riporta in LIBERO uno stallo FUORI_SERVIZIO")
+        void rimettiInServizioDaFuoriServizio() {
+            stallo.mettiFuoriServizio();
+
+            stallo.rimettiInServizio();
+
+            assertEquals(StatoStallo.LIBERO, stallo.getStato());
+            stallo.prenota(TARGA, T0, VALIDITA_PRENOTAZIONE_MIN);
+            assertEquals(StatoStallo.PRENOTATO, stallo.getStato());
+        }
+
+        @ParameterizedTest(name = "rimettiInServizio() rifiutata se lo stallo e' {0}")
+        @EnumSource(value = StatoStallo.class, names = "FUORI_SERVIZIO", mode = EnumSource.Mode.EXCLUDE)
+        void rimettiInServizioDaStatoNonFuoriServizio(StatoStallo stato) {
+            portaInStato(stato);
+
+            assertThrows(IllegalStateException.class, () -> stallo.rimettiInServizio());
+            assertEquals(stato, stallo.getStato());
         }
     }
 }

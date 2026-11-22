@@ -32,8 +32,20 @@ public class StalloEV extends Stallo {
 
     @Override
     public void libera() {
-        colonnina.chiudiSessione();
         super.libera();
+        colonnina.chiudiSessione();
+    }
+
+    @Override
+    public void mettiFuoriServizio() {
+        super.mettiFuoriServizio();
+        colonnina.getStatoCorrente().impostaManutenzione(colonnina);
+    }
+
+    @Override
+    public void rimettiInServizio() {
+        super.rimettiInServizio();
+        colonnina.chiudiSessione();
     }
 
     public Colonnina getColonnina() {

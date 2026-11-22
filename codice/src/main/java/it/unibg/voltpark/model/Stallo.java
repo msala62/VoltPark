@@ -23,6 +23,13 @@ public abstract class Stallo {
     public abstract double getTariffaOrariaSosta();
 
     public void prenota(String targa, LocalDateTime adesso, int minutiValidita) {
+        validaTarga(targa);
+        if (adesso == null) {
+            throw new IllegalArgumentException("L'istante di prenotazione non puo' essere nullo.");
+        }
+        if (minutiValidita <= 0) {
+            throw new IllegalArgumentException("La validita' della prenotazione deve essere positiva.");
+        }
         if (this.stato != StatoStallo.LIBERO) {
             throw new IllegalStateException("Lo stallo " + codice + " non e' libero.");
         }
@@ -42,6 +49,7 @@ public abstract class Stallo {
     }
 
     public void occupa(String targa) {
+        validaTarga(targa);
         if (this.stato == StatoStallo.PRENOTATO) {
             if (prenotazioneAttiva != null && !prenotazioneAttiva.targaVeicolo().equalsIgnoreCase(targa)) {
                 throw new IllegalStateException("Stallo prenotato da un'altra targa.");
@@ -56,9 +64,29 @@ public abstract class Stallo {
     }
 
     public void libera() {
+        if (this.stato == StatoStallo.FUORI_SERVIZIO) {
+            throw new IllegalStateException(
+                    "Lo stallo " + codice + " e' fuori servizio: usare rimettiInServizio().");
+        }
         this.targaOccupante = null;
         this.prenotazioneAttiva = null;
         this.minutiSostaAccumulati = 0;
+        this.stato = StatoStallo.LIBERO;
+    }
+
+    public void mettiFuoriServizio() {
+        if (this.stato == StatoStallo.OCCUPATO) {
+            throw new IllegalStateException(
+                    "Impossibile mettere fuori servizio lo stallo " + codice + " mentre e' occupato.");
+        }
+        this.prenotazioneAttiva = null;
+        this.stato = StatoStallo.FUORI_SERVIZIO;
+    }
+
+    public void rimettiInServizio() {
+        if (this.stato != StatoStallo.FUORI_SERVIZIO) {
+            throw new IllegalStateException("Lo stallo " + codice + " non e' fuori servizio.");
+        }
         this.stato = StatoStallo.LIBERO;
     }
 
@@ -68,9 +96,14 @@ public abstract class Stallo {
         }
     }
 
+    private static void validaTarga(String targa) {
+        if (targa == null || targa.isBlank()) {
+            throw new IllegalArgumentException("La targa del veicolo non puo' essere vuota.");
+        }
+    }
+
     public String getCodice() { return codice; }
     public StatoStallo getStato() { return stato; }
-    public void setStato(StatoStallo stato) { this.stato = stato; }
     public Optional<String> getTargaOccupante() { return Optional.ofNullable(targaOccupante); }
     public Optional<Prenotazione> getPrenotazioneAttiva() { return Optional.ofNullable(prenotazioneAttiva); }
     public int getMinutiSostaAccumulati() { return minutiSostaAccumulati; }
