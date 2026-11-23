@@ -2,6 +2,7 @@ package it.unibg.voltpark.model;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,6 +21,7 @@ class StalloEVTest {
 
     private static final LocalDateTime T0 = LocalDateTime.of(2026, 11, 20, 9, 0);
     private static final String TARGA = "EV123AB";
+    private static final String ALTRA_TARGA = "ZZ999ZZ";
 
     private Colonnina colonnina;
     private StalloEV stalloEV;
@@ -106,5 +108,52 @@ class StalloEVTest {
         assertAll(
                 () -> assertEquals(StatoStallo.LIBERO, stalloEV.getStato()),
                 () -> assertEquals("LIBERA", colonnina.getStatoCorrente().getNomeStato()));
+    }
+
+    @Test
+    @DisplayName("la scadenza della prenotazione libera anche la colonnina")
+    void scadenzaPrenotazioneLiberaColonnina() {
+        stalloEV.prenota(TARGA, T0, 30);
+
+        assertTrue(stalloEV.verificaEScadutaPrenotazione(T0.plusMinutes(31)));
+        assertAll(
+                () -> assertEquals(StatoStallo.LIBERO, stalloEV.getStato()),
+                () -> assertEquals("LIBERA", colonnina.getStatoCorrente().getNomeStato()));
+    }
+
+    @Test
+    @DisplayName("dopo una prenotazione scaduta lo stallo si puo' prenotare di nuovo")
+    void nuovaPrenotazioneDopoScadenza() {
+        stalloEV.prenota(TARGA, T0, 30);
+        stalloEV.verificaEScadutaPrenotazione(T0.plusMinutes(31));
+
+        stalloEV.prenota(ALTRA_TARGA, T0.plusMinutes(32), 30);
+
+        assertAll(
+                () -> assertEquals(StatoStallo.PRENOTATO, stalloEV.getStato()),
+                () -> assertEquals(ALTRA_TARGA,
+                        stalloEV.getPrenotazioneAttiva().orElseThrow().targaVeicolo()),
+                () -> assertEquals("PRENOTATA", colonnina.getStatoCorrente().getNomeStato()));
+    }
+
+    @Test
+    @DisplayName("prima della scadenza la colonnina resta PRENOTATA")
+    void prenotazioneNonScadutaNonToccaColonnina() {
+        stalloEV.prenota(TARGA, T0, 30);
+
+        assertFalse(stalloEV.verificaEScadutaPrenotazione(T0.plusMinutes(29)));
+        assertEquals("PRENOTATA", colonnina.getStatoCorrente().getNomeStato());
+    }
+
+    @Test
+    @DisplayName("se la colonnina rifiuta la prenotazione, lo stallo resta LIBERO")
+    void prenotaRifiutataDallaColonninaNonAlteraStallo() {
+        colonnina.getStatoCorrente().impostaManutenzione(colonnina);
+
+        assertThrows(IllegalStateException.class, () -> stalloEV.prenota(TARGA, T0, 30));
+        assertAll(
+                () -> assertEquals(StatoStallo.LIBERO, stalloEV.getStato()),
+                () -> assertTrue(stalloEV.getPrenotazioneAttiva().isEmpty()),
+                () -> assertEquals("FUORI_SERVIZIO", colonnina.getStatoCorrente().getNomeStato()));
     }
 }
