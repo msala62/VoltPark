@@ -27,13 +27,40 @@ public class StalloEV extends Stallo {
     @Override
     public void prenota(String targa, LocalDateTime adesso, int minutiValidita) {
         super.prenota(targa, adesso, minutiValidita);
-        colonnina.getStatoCorrente().prenota(colonnina);
+        try {
+            colonnina.getStatoCorrente().prenota(colonnina);
+        } catch (IllegalStateException e) {
+            // la colonnina rifiuta: annullo la prenotazione dello stallo per non lasciarli disallineati
+            super.libera();
+            throw e;
+        }
+    }
+
+    @Override
+    public boolean verificaEScadutaPrenotazione(LocalDateTime adesso) {
+        boolean scaduta = super.verificaEScadutaPrenotazione(adesso);
+        if (scaduta) {
+            colonnina.chiudiSessione();
+        }
+        return scaduta;
     }
 
     @Override
     public void libera() {
-        colonnina.chiudiSessione();
         super.libera();
+        colonnina.chiudiSessione();
+    }
+
+    @Override
+    public void mettiFuoriServizio() {
+        super.mettiFuoriServizio();
+        colonnina.getStatoCorrente().impostaManutenzione(colonnina);
+    }
+
+    @Override
+    public void rimettiInServizio() {
+        super.rimettiInServizio();
+        colonnina.chiudiSessione();
     }
 
     public Colonnina getColonnina() {
